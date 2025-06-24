@@ -106,6 +106,19 @@ jobs:
 
           ccache --version
           echo "依赖安装完成"
+      - name: 🔧 Install latest Make (安装最新Make)
+        run: |
+          echo "安装最新版本的 Make..."
+          cd /tmp
+          wget -q https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz
+          tar -xzf make-4.4.1.tar.gz
+          cd make-4.4.1
+          ./configure --prefix=/usr/local --disable-dependency-tracking >/dev/null
+          make -j$(nproc) >/dev/null 2>&1
+          sudo make install >/dev/null
+          echo "/usr/local/bin" >> $GITHUB_PATH
+          /usr/local/bin/make --version | head -1
+          echo "Make 安装完成"
 
           
       - name: 📥 Restore ccache (载入 机型：${{ env.DEVICES_NAME }}的 ccache 缓存)
@@ -335,9 +348,9 @@ jobs:
           cd kernel_workspace/kernel_platform/common
           
          
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O3  gki_defconfig
+          /usr/local/bin/make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O3  gki_defconfig
           
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O3  Image
+          /usr/local/bin/make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O3  Image
 
       - name: 📦 Apply Linux Patch (应用KPM修补补丁)
         run: |
