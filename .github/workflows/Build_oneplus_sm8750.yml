@@ -11,7 +11,7 @@ on:
           - 'oneplus_ace5_pro'
           - 'oneplus_13t'
           - 'oneplus_pad_2_pro'
-        default: 'oneplus_ace5_pro'
+        default: 'oneplus_13t'
       KERNEL_SUFFIX:
         description: '内核名称修改(可改中文和emoji)'
         required: true
