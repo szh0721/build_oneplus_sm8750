@@ -159,10 +159,33 @@ jobs:
          cd kernel_workspace/kernel_platform
          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/susfs-test/kernel/setup.sh" | bash -s susfs-test
          cd ./KernelSU
-         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10700)
-         echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-         export KSU_VERSION=$KSU_VERSION
-         sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
+         KSU_API_VERSION_LOCAL=$(grep -m1 -oP 'KSU_API_VERSION_LOCAL\s*:=\s*\K\d+' kernel/Makefile || echo "1")
+         KSU_COMMIT_HASH=$(git rev-parse --short=8 HEAD)
+         KSU_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+         KSU_API_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10000 "+" 700)
+         KSU_VERSION="v${KSU_API_VERSION_LOCAL}-${KSU_COMMIT_HASH}@${KSU_BRANCH_NAME}\\"
+         echo "KSUVER=$KSU_API_VERSION" >> $GITHUB_ENV
+         echo "KSU_VERSION_STR=$KSU_VERSION" >> $GITHUB_ENV
+         export KSU_VERSION=$KSU_API_VERSION
+         
+         # 安全转义函数
+         escape_sed() {
+             echo "$1" | sed 's/[][\/\.*^$]/\\&/g'
+         }
+         
+         # 从Makefile中提取旧版本号
+         OLD_KSU_VERSION=$(grep -m1 -oP 'ccflags-y\s*\+=\s*-DKSU_VERSION=\\"\K[^"]+' kernel/Makefile || echo "\$(KSU_KERNEL_VERSION)\\")
+         OLD_KSU_API_VERSION=$(grep -m1 -oP 'ccflags-y\s*\+=\s*-DKSU_API_VERSION=\K\d+' kernel/Makefile || echo "\$(KSU_API_VERSION)")
+         
+         # 转义所有特殊字符
+         OLD_KSU_VERSION_ESC=$(escape_sed "$OLD_KSU_VERSION")
+         KSU_VERSION_ESC=$(escape_sed "$KSU_VERSION")
+         OLD_KSU_API_VERSION_ESC=$(escape_sed "$OLD_KSU_API_VERSION")
+         KSU_API_VERSION_ESC=$(escape_sed "$KSU_API_VERSION")
+         
+         # 使用安全替换命令
+         sed -i.bak "s/-DKSU_VERSION=\\\\\"${OLD_KSU_VERSION_ESC}\\\\\"/-DKSU_VERSION=\\\\\"${KSU_VERSION_ESC}\\\\\"/" kernel/Makefile
+         sed -i.bak "s/-DKSU_API_VERSION=${OLD_KSU_API_VERSION_ESC}/-DKSU_API_VERSION=${KSU_API_VERSION_ESC}/" kernel/Makefile
       
         
       - name: 🔧 Set up SUSFS (配置 SUSFS)
@@ -317,15 +340,48 @@ jobs:
           export CCACHE_DIR="${{ env.CCACHE_DIR }}"
           export CCACHE_MAXSIZE="8G"
           
+          # 设置构建环境变量（关键修复）
           export KBUILD_BUILD_TIMESTAMP="${KERNEL_TIME}"
           
           sudo apt install -y libelf-dev
           
           cd kernel_workspace/kernel_platform/common
           
+          # 清理构建环境
+          make clean && make mrproper
+          rm -rf out 
+          mkdir -p out
          
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out Image
+          # 配置内核（修复了编译参数）
+          make ARCH=arm64 SUBARCH=arm64 O=out \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CC="ccache clang" \
+            CXX="ccache clang++" \
+            HOSTCC="ccache clang" \
+            HOSTCXX="ccache clang++" \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
+            PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
+            LD=ld.lld \
+            HOSTLD=ld.lld \
+            CLANG_AUTOFDO_PROFILE="../android/gki/aarch64/afdo/kernel.afdo" \
+            gki_defconfig
+            
+          # 编译内核（修复了编译参数）
+          make ARCH=arm64 SUBARCH=arm64 -j$(nproc --all) O=out \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CC="ccache clang" \
+            CXX="ccache clang++" \
+            HOSTCC="ccache clang" \
+            HOSTCXX="ccache clang++" \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
+            PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
+            LD=ld.lld \
+            HOSTLD=ld.lld \
+            CLANG_AUTOFDO_PROFILE="../android/gki/aarch64/afdo/kernel.afdo"
          
       - name: 📦 Make AnyKernel3 (创建AnyKernel3)
         run: |
