@@ -66,10 +66,10 @@ jobs:
         run: |
           case "${{ github.event.inputs.REPO_MANIFEST }}" in
             oneplus_13 | oneplus_13t)
-              echo 'KERNEL_TIME=Tue Dec 17 23:36:49 UTC 2024' >> $GITHUB_ENV
+              echo 'KERNEL_TIME=Fri Apr 25 01:56:53 UTC 2025' >> $GITHUB_ENV
               ;;
             *)
-              echo 'KERNEL_TIME=FriApr 25 01:56:53 UTC 2025' >> $GITHUB_ENV
+              echo 'KERNEL_TIME=Fri Apr 25 01:56:53 UTC 2025' >> $GITHUB_ENV
               ;;
           esac
 
