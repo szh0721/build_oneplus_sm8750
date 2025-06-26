@@ -15,7 +15,7 @@ on:
       KERNEL_SUFFIX:
         description: '内核名称修改(可改中文和emoji)'
         required: true
-        default: '-android15-8-g013ec21bba94-abogki383916444-4k'
+        default: '-android15-8-gba3bcfd39307-abogki413159095-4k'
       enable_feature_x:
        description: "启用kpm"
        required: false
@@ -69,7 +69,7 @@ jobs:
               echo 'KERNEL_TIME=Tue Dec 17 23:36:49 UTC 2024' >> $GITHUB_ENV
               ;;
             *)
-              echo 'KERNEL_TIME=Wed Dec 4 02:11:46 UTC 2024' >> $GITHUB_ENV
+              echo 'KERNEL_TIME=FriApr 25 01:56:53 UTC 2025' >> $GITHUB_ENV
               ;;
           esac
 
