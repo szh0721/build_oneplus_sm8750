@@ -1,39 +1,6 @@
-name: Build_oneplus_sm8750
+name: Build_oneplus_13t_sm8750
 on:
   workflow_dispatch:
-    inputs:
-      REPO_MANIFEST:
-        description: "请选择要编译的机型："
-        required: true
-        type: choice
-        options:
-          - 'oneplus_13'
-          - 'oneplus_ace5_pro'
-          - 'oneplus_13t'
-          - 'oneplus_pad_2_pro'
-        default: 'oneplus_13t'
-      KERNEL_SUFFIX:
-        description: '内核名称修改(可改中文和emoji)'
-        required: true
-        default: '-android15-8-gba3bcfd39307-abogki413159095-4k'
-      enable_feature_x:
-       description: "启用kpm"
-       required: false
-       default: false
-       type: boolean
-      enable_feature_y:
-       description: "启用lz4+zstd"
-       required: false
-       default: true
-       type: boolean
-      enable_feature_z:
-       description: "添加风驰驱动"
-       required: false
-       default: false
-       type: boolean
-      
-       
-
 
 jobs:
   build:
@@ -45,33 +12,9 @@ jobs:
           df -h
 
       - name: ⚙️ Set REPO_MANIFEST (设置对应机型配置文件)
-        id: set_manifest
         run: |
-          case "${{ github.event.inputs.REPO_MANIFEST }}" in
-            oneplus_ace5_pro)
-              echo "REPO_MANIFEST=JiuGeFaCai_oneplus_ace5_pro_v" >> $GITHUB_ENV
-              echo "DEVICES_NAME=oneplus_ace5_pro" >> $GITHUB_ENV
-              ;;
-            oneplus_13)
-              echo "REPO_MANIFEST=JiuGeFaCai_oneplus_13_v" >> $GITHUB_ENV
-              echo "DEVICES_NAME=oneplus_13" >> $GITHUB_ENV
-              ;;
-            *)
-              echo "REPO_MANIFEST=${{ github.event.inputs.REPO_MANIFEST }}" >> $GITHUB_ENV
-              echo "DEVICES_NAME=${{ github.event.inputs.REPO_MANIFEST }}" >> $GITHUB_ENV
-              ;;
-          esac
-
-      - name: ⚙️ Set KERNEL_TIME (设置对应机型构建时间)
-        run: |
-          case "${{ github.event.inputs.REPO_MANIFEST }}" in
-            oneplus_13 | oneplus_13t)
-              echo 'KERNEL_TIME=Fri Apr 25 01:56:53 UTC 2025' >> $GITHUB_ENV
-              ;;
-            *)
-              echo 'KERNEL_TIME=Fri Apr 25 01:56:53 UTC 2025' >> $GITHUB_ENV
-              ;;
-          esac
+          echo "REPO_MANIFEST=oneplus_13t" >> $GITHUB_ENV
+          echo "DEVICES_NAME=oneplus_13t" >> $GITHUB_ENV
 
       - name: ⚙️ Set device-specific CCACHE_DIR (设置对应机型Cceche路径)
         run: |
@@ -107,7 +50,6 @@ jobs:
           ccache --version
           echo "依赖安装完成"
 
-          
       - name: 📥 Restore ccache (载入 机型：${{ env.DEVICES_NAME }}的 ccache 缓存)
         uses: actions/cache@v3
         with:
@@ -139,7 +81,6 @@ jobs:
             echo "未安装 ccache，跳过"
           fi
 
-
       - name: 📥 Install repo tool (下载repo工具)
         run: |
          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
@@ -165,8 +106,6 @@ jobs:
          KSU_API_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10000 "+" 700)
          KSU_VERSION="v${KSU_API_VERSION_LOCAL}-${KSU_COMMIT_HASH}@${KSU_BRANCH_NAME}\\"
          echo "KSUVER=$KSU_API_VERSION" >> $GITHUB_ENV
-         echo "KSU_VERSION_STR=$KSU_VERSION" >> $GITHUB_ENV
-         export KSU_VERSION=$KSU_API_VERSION
          
          # 安全转义函数
          escape_sed() {
@@ -186,7 +125,6 @@ jobs:
          # 使用安全替换命令
          sed -i.bak "s/-DKSU_VERSION=\\\\\"${OLD_KSU_VERSION_ESC}\\\\\"/-DKSU_VERSION=\\\\\"${KSU_VERSION_ESC}\\\\\"/" kernel/Makefile
          sed -i.bak "s/-DKSU_API_VERSION=${OLD_KSU_API_VERSION_ESC}/-DKSU_API_VERSION=${KSU_API_VERSION_ESC}/" kernel/Makefile
-      
         
       - name: 🔧 Set up SUSFS (配置 SUSFS)
         run: |
@@ -201,47 +139,12 @@ jobs:
 
            # Apply patches
            cd ./common
-
-           if [ "${REPO_MANIFEST}" != "oneplus_13t" ]; then
-            sed -i 's/-32,12 +32,38/-32,11 +32,37/g' 50_add_susfs_in_gki-android15-6.6.patch
-            sed -i '/#include <trace\/hooks\/fs.h>/d' 50_add_susfs_in_gki-android15-6.6.patch
-           fi
-
            patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || true
            cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
            patch -p1 -F 3 < syscall_hooks.patch
-
-           
            echo "完成"
 
-      - name: 🔧 Cache HMBird patch (缓存HMBird补丁)
-        uses: actions/cache@v3
-        with:
-          path: ${{ runner.temp }}/hmbird_patch.c
-          key: hmbird-patch-v1
-          restore-keys: |
-            hmbird-patch-v1
-            
-      
-      - name: 🔧 Apply HMBird GKI patch (写入单Boot开机补丁)
-        run: |
-          PATCH_FILE="${{ runner.temp }}/hmbird_patch.c"
-          if [ ! -f "$PATCH_FILE" ]; then
-            echo "下载HMBird补丁..."
-            curl -sSLo "$PATCH_FILE" https://raw.githubusercontent.com/showdo/build_oneplus_sm8750/main/hmbird_patch.c
-          fi
-          
-          cd kernel_workspace/kernel_platform/common/drivers
-          cp "$PATCH_FILE" hmbird_patch.c
-          
-          if ! grep -q "hmbird_patch.o" Makefile; then
-            echo "obj-y += hmbird_patch.o" >> Makefile
-          fi
-          echo "HMBird补丁应用完成"
-          
       - name: 🔧 Set gki_defconfig (设置编译配置)
-        env:
-          ENABLE_FEATURE_X: "${{ inputs.enable_feature_x }}"
         run: |
           cd kernel_workspace/kernel_platform
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -249,9 +152,6 @@ jobs:
           # Add VFS configuration settings
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
-          if [ "$ENABLE_FEATURE_X" = "true" ]; then
-            echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
-          fi
           
           # 文件系统级压缩支持
           echo "CONFIG_F2FS_FS_COMPRESSION=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -285,16 +185,7 @@ jobs:
         run: |
          cd kernel_workspace/kernel_platform
          sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
-         sudo sed -i 's/-4k/${{ github.event.inputs.KERNEL_SUFFIX }}/g' ./common/arch/arm64/configs/gki_defconfig
-        
-      - name: 🔧 Add sched_ext (写入风驰补丁)
-        if: ${{inputs.enable_feature_z }}
-        run: |
-         cd kernel_workspace/kernel_platform/
-         git clone https://github.com/HanKuCha/sched_ext.git
-         cp -r ./sched_ext/* ./common/kernel/sched
-         rm -rf ./sched_ext/.git
-         cd common/kernel/sched  
+         sudo sed -i 's/-4k/-android15-8-gba3bcfd39307-abogki413159095-4k/g' ./common/arch/arm64/configs/gki_defconfig  
 
       - name: 🔨 Build Kernel (构建内核)
         run: |
@@ -302,15 +193,13 @@ jobs:
           export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
           export KBUILD_BUILD_USER="kleaf"
           export KBUILD_BUILD_HOST="build-host"
+          export KBUILD_BUILD_TIMESTAMP="Fri Apr 25 01:56:53 UTC 2025"
           
           export CCACHE_COMPILERCHECK="%compiler% -dumpmachine; %compiler% -dumpversion"
           export CCACHE_NOHASHDIR="true"
           export CCACHE_HARDLINK="true"
           export CCACHE_DIR="${{ env.CCACHE_DIR }}"
           export CCACHE_MAXSIZE="8G"
-          
-          # 设置构建环境变量（关键修复）
-          export KBUILD_BUILD_TIMESTAMP="${KERNEL_TIME}"
           
           sudo apt install -y libelf-dev
           
