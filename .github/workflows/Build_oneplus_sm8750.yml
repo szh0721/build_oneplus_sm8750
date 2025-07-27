@@ -53,13 +53,15 @@ jobs:
       - name: 📥 Download and setup ZyCromerZ Clang (下载并设置 ZyCromerZ Clang 19.0.0)
         run: |
           echo "下载 ZyCromerZ Clang 19.0.0..."
-          mkdir -p $HOME/clang
-          cd $HOME/clang
+          mkdir -p $GITHUB_WORKSPACE/clang
+          cd $GITHUB_WORKSPACE/clang
           wget -q https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
           echo "解压 Clang..."
           tar -xzf Clang-19.0.0git-20240723.tar.gz
           rm Clang-19.0.0git-20240723.tar.gz
-          echo "CLANG_PATH=$HOME/clang/Clang-19.0.0git-20240723/bin" >> $GITHUB_ENV
+          echo "CLANG_PATH=$GITHUB_WORKSPACE/clang/Clang-19.0.0git-20240723/bin" >> $GITHUB_ENV
+          # 验证工具链
+          ls -la $GITHUB_WORKSPACE/clang/Clang-19.0.0git-20240723/bin/
           echo "Clang 安装完成"
 
       - name: 📥 Restore ccache (载入 机型：${{ env.DEVICES_NAME }}的 ccache 缓存)
@@ -175,7 +177,7 @@ jobs:
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
