@@ -50,6 +50,18 @@ jobs:
           ccache --version
           echo "依赖安装完成"
 
+      - name: 📥 Download and setup custom Clang (下载并设置自定义Clang编译器)
+        run: |
+          echo "下载自定义Clang编译器..."
+          mkdir -p $HOME/clang
+          cd $HOME/clang
+          wget -q https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
+          echo "解压Clang编译器..."
+          tar -xzf Clang-19.0.0git-20240723.tar.gz
+          rm Clang-19.0.0git-20240723.tar.gz
+          echo "CLANG_PATH=$HOME/clang/bin" >> $GITHUB_ENV
+          echo "自定义Clang编译器设置完成"
+
       - name: 📥 Restore ccache (载入 机型：${{ env.DEVICES_NAME }}的 ccache 缓存)
         uses: actions/cache@v3
         with:
@@ -190,7 +202,7 @@ jobs:
       - name: 🔨 Build Kernel (构建内核)
         run: |
           export PATH="/usr/lib/ccache:$PATH"
-          export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
+          export PATH="${{ env.CLANG_PATH }}:$PATH"
           export KBUILD_BUILD_USER="kleaf"
           export KBUILD_BUILD_HOST="build-host"
           export KBUILD_BUILD_TIMESTAMP="Fri Apr 25 01:56:53 UTC 2025"
@@ -210,7 +222,7 @@ jobs:
           rm -rf out 
           mkdir -p out
          
-          # 配置内核（修复了编译参数）
+          # 配置内核（使用自定义Clang编译器）
           make ARCH=arm64 SUBARCH=arm64 O=out \
             LLVM=1 \
             LLVM_IAS=1 \
@@ -226,7 +238,7 @@ jobs:
             CLANG_AUTOFDO_PROFILE="../android/gki/aarch64/afdo/kernel.afdo" \
             gki_defconfig
             
-          # 编译内核（修复了编译参数）
+          # 编译内核（使用自定义Clang编译器）
           make ARCH=arm64 SUBARCH=arm64 -j$(nproc --all) O=out \
             LLVM=1 \
             LLVM_IAS=1 \
