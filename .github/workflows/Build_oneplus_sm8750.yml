@@ -57,9 +57,8 @@ jobs:
           cd $HOME/clang
           wget -q https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
           echo "解压Clang编译器..."
-          tar -xzf Clang-19.0.0git-20240723.tar.gz
+          tar -xzf Clang-19.0.0git-20240723.tar.gz --strip-components=1
           rm Clang-19.0.0git-20240723.tar.gz
-          echo "CLANG_PATH=$HOME/clang/bin" >> $GITHUB_ENV
           echo "自定义Clang编译器设置完成"
 
       - name: 📥 Restore ccache (载入 机型：${{ env.DEVICES_NAME }}的 ccache 缓存)
@@ -202,7 +201,7 @@ jobs:
       - name: 🔨 Build Kernel (构建内核)
         run: |
           export PATH="/usr/lib/ccache:$PATH"
-          export PATH="${{ env.CLANG_PATH }}:$PATH"
+          export PATH="$HOME/clang/bin:$PATH"
           export KBUILD_BUILD_USER="kleaf"
           export KBUILD_BUILD_HOST="build-host"
           export KBUILD_BUILD_TIMESTAMP="Fri Apr 25 01:56:53 UTC 2025"
