@@ -161,6 +161,15 @@ jobs:
       - name: 🔧 Set gki_defconfig (设置编译配置)
         run: |
           cd kernel_workspace/kernel_platform
+          
+          # 首先检查配置文件是否存在
+          if [ ! -f "./common/arch/arm64/configs/gki_defconfig" ]; then
+            echo "错误：找不到 gki_defconfig 文件"
+            echo "列出可用的配置文件："
+            find ./common -name "*defconfig*" -type f
+            exit 1
+          fi
+          
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
 
           # Add VFS configuration settings
