@@ -61,8 +61,9 @@ jobs:
       - name: 📥 Download and setup Custom Clang (下载并设置自定义 Clang 编译器)
         run: |
           CLANG_DIR="${{ github.workspace }}/clang"
-          if [ ! -d "$CLANG_DIR/bin" ]; then
+          if [ ! -f "$CLANG_DIR/.clang_setup_complete" ]; then
             echo "下载自定义 Clang 编译器..."
+            rm -rf "$CLANG_DIR"
             mkdir -p "$CLANG_DIR"
             cd "$CLANG_DIR"
             
@@ -79,16 +80,55 @@ jobs:
             # 验证文件存在并查看大小
             ls -lh Clang-19.0.0git-20240723.tar.gz
             
-            # 解压文件
+            # 解压文件（不使用 strip-components）
             echo "正在解压 Clang..."
-            tar -xzf Clang-19.0.0git-20240723.tar.gz --strip-components=1
+            tar -xzf Clang-19.0.0git-20240723.tar.gz
             
-            # 验证解压结果
-            echo "验证解压结果..."
+            # 查看解压后的结构
+            echo "解压后的目录结构："
             ls -la .
+            
+            # 查找 clang 可执行文件的实际位置
+            echo "查找 clang 可执行文件..."
+            find . -name "clang" -type f -executable 2>/dev/null | head -5
+            
+            # 尝试不同的可能路径
+            CLANG_BINARY=""
+            for path in "./bin/clang" "./clang" "./*/bin/clang" "./clang-*/bin/clang" "./*/clang"; do
+              if [ -x "$path" ]; then
+                CLANG_BINARY="$path"
+                echo "找到 clang: $path"
+                break
+              fi
+            done
+            
+            if [ -z "$CLANG_BINARY" ]; then
+              echo "错误: 未找到 clang 可执行文件"
+              echo "完整目录结构："
+              find . -type f -name "*clang*" 2>/dev/null || echo "未找到包含 clang 的文件"
+              exit 1
+            fi
+            
+            # 获取 clang 的实际目录
+            CLANG_REAL_DIR=$(dirname "$CLANG_BINARY")
+            CLANG_ROOT_DIR=$(dirname "$CLANG_REAL_DIR")
+            
+            echo "Clang 根目录: $CLANG_ROOT_DIR"
+            echo "Clang 二进制目录: $CLANG_REAL_DIR"
+            
+            # 如果不是在根目录的 bin 下，则移动文件
+            if [ "$CLANG_ROOT_DIR" != "." ]; then
+              echo "重新组织目录结构..."
+              mv "$CLANG_ROOT_DIR"/* ./ 2>/dev/null || true
+              rmdir "$CLANG_ROOT_DIR" 2>/dev/null || true
+            fi
             
             # 清理压缩包
             rm Clang-19.0.0git-20240723.tar.gz
+            
+            # 标记设置完成
+            touch .clang_setup_complete
+            
             echo "Clang 编译器下载完成"
           else
             echo "使用缓存的 Clang 编译器"
@@ -98,27 +138,33 @@ jobs:
           echo "验证 Clang 目录结构:"
           ls -la "$CLANG_DIR/"
           
-          if [ -d "$CLANG_DIR/bin" ]; then
-            echo "bin 目录存在，内容:"
-            ls -la "$CLANG_DIR/bin/"
-          else
-            echo "错误: bin 目录不存在"
-            echo "尝试查找 clang 可执行文件:"
-            find "$CLANG_DIR" -name "clang" -type f 2>/dev/null || echo "未找到 clang 可执行文件"
+          # 查找 clang 可执行文件
+          CLANG_BINARY=""
+          for path in "$CLANG_DIR/bin/clang" "$CLANG_DIR/clang"; do
+            if [ -x "$path" ]; then
+              CLANG_BINARY="$path"
+              break
+            fi
+          done
+          
+          if [ -z "$CLANG_BINARY" ]; then
+            echo "错误: 未找到 clang 可执行文件"
+            echo "bin 目录内容:"
+            ls -la "$CLANG_DIR/bin/" 2>/dev/null || echo "bin 目录不存在"
+            echo "查找所有 clang 文件:"
+            find "$CLANG_DIR" -name "*clang*" -type f 2>/dev/null || echo "未找到 clang 文件"
             exit 1
           fi
           
           # 设置 Clang 路径环境变量
-          echo "CLANG_PATH=$CLANG_DIR" >> $GITHUB_ENV
+          CLANG_BIN_DIR=$(dirname "$CLANG_BINARY")
+          echo "CLANG_PATH=$(dirname "$CLANG_BIN_DIR")" >> $GITHUB_ENV
+          echo "CLANG_BIN_DIR=$CLANG_BIN_DIR" >> $GITHUB_ENV
           
           # 验证 Clang 安装
-          if [ -x "$CLANG_DIR/bin/clang" ]; then
-            "$CLANG_DIR/bin/clang" --version
-            echo "Clang 验证成功"
-          else
-            echo "错误: clang 可执行文件不存在或无执行权限"
-            exit 1
-          fi
+          echo "验证 Clang 安装:"
+          "$CLANG_BINARY" --version
+          echo "Clang 验证成功"
 
       - name: 📥 Restore ccache (载入 机型：${{ env.DEVICES_NAME }}的 ccache 缓存)
         uses: actions/cache@v3
@@ -261,19 +307,21 @@ jobs:
         run: |
           # 验证 Clang 路径
           echo "验证 Clang 路径: ${{ env.CLANG_PATH }}"
-          if [ ! -d "${{ env.CLANG_PATH }}/bin" ]; then
-            echo "错误: Clang 目录不存在"
+          echo "验证 Clang 二进制目录: ${{ env.CLANG_BIN_DIR }}"
+          
+          if [ ! -d "${{ env.CLANG_BIN_DIR }}" ]; then
+            echo "错误: Clang 二进制目录不存在"
             exit 1
           fi
           
-          if [ ! -x "${{ env.CLANG_PATH }}/bin/clang" ]; then
+          if [ ! -x "${{ env.CLANG_BIN_DIR }}/clang" ]; then
             echo "错误: clang 可执行文件不存在"
-            ls -la "${{ env.CLANG_PATH }}/bin/"
+            ls -la "${{ env.CLANG_BIN_DIR }}/"
             exit 1
           fi
           
           # 设置环境变量
-          export PATH="/usr/lib/ccache:${{ env.CLANG_PATH }}/bin:$PATH"
+          export PATH="/usr/lib/ccache:${{ env.CLANG_BIN_DIR }}:$PATH"
           export KBUILD_BUILD_USER="kleaf"
           export KBUILD_BUILD_HOST="build-host"
           export KBUILD_BUILD_TIMESTAMP="Fri Apr 25 01:56:53 UTC 2025"
@@ -286,9 +334,13 @@ jobs:
           
           # 检查编译器是否存在
           echo "检查编译器工具:"
-          which clang || echo "clang not in PATH"
-          ls -la "${{ env.CLANG_PATH }}/bin/clang"
-          ls -la "${{ env.CLANG_PATH }}/bin/aarch64-linux-gnu-"* || echo "未找到 aarch64 交叉编译工具"
+          which clang
+          "${{ env.CLANG_BIN_DIR }}/clang" --version
+          
+          # 检查交叉编译工具
+          echo "检查交叉编译工具:"
+          ls -la "${{ env.CLANG_BIN_DIR }}/aarch64"* 2>/dev/null || echo "未找到 aarch64 前缀的工具"
+          ls -la "${{ env.CLANG_BIN_DIR }}/llvm-"* 2>/dev/null || echo "未找到 llvm 工具"
           
           sudo apt install -y libelf-dev
           
@@ -303,15 +355,15 @@ jobs:
           make ARCH=arm64 SUBARCH=arm64 O=out \
             LLVM=1 \
             LLVM_IAS=1 \
-            CC="ccache ${{ env.CLANG_PATH }}/bin/clang" \
-            CXX="ccache ${{ env.CLANG_PATH }}/bin/clang++" \
-            HOSTCC="ccache ${{ env.CLANG_PATH }}/bin/clang" \
-            HOSTCXX="ccache ${{ env.CLANG_PATH }}/bin/clang++" \
-            CROSS_COMPILE=${{ env.CLANG_PATH }}/bin/aarch64-linux-gnu- \
+            CC="ccache ${{ env.CLANG_BIN_DIR }}/clang" \
+            CXX="ccache ${{ env.CLANG_BIN_DIR }}/clang++" \
+            HOSTCC="ccache ${{ env.CLANG_BIN_DIR }}/clang" \
+            HOSTCXX="ccache ${{ env.CLANG_BIN_DIR }}/clang++" \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
             PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-            LD=${{ env.CLANG_PATH }}/bin/ld.lld \
-            HOSTLD=${{ env.CLANG_PATH }}/bin/ld.lld \
+            LD=${{ env.CLANG_BIN_DIR }}/ld.lld \
+            HOSTLD=${{ env.CLANG_BIN_DIR }}/ld.lld \
             CLANG_AUTOFDO_PROFILE="../android/gki/aarch64/afdo/kernel.afdo" \
             gki_defconfig
             
@@ -319,15 +371,15 @@ jobs:
           make ARCH=arm64 SUBARCH=arm64 -j$(nproc --all) O=out \
             LLVM=1 \
             LLVM_IAS=1 \
-            CC="ccache ${{ env.CLANG_PATH }}/bin/clang" \
-            CXX="ccache ${{ env.CLANG_PATH }}/bin/clang++" \
-            HOSTCC="ccache ${{ env.CLANG_PATH }}/bin/clang" \
-            HOSTCXX="ccache ${{ env.CLANG_PATH }}/bin/clang++" \
-            CROSS_COMPILE=${{ env.CLANG_PATH }}/bin/aarch64-linux-gnu- \
+            CC="ccache ${{ env.CLANG_BIN_DIR }}/clang" \
+            CXX="ccache ${{ env.CLANG_BIN_DIR }}/clang++" \
+            HOSTCC="ccache ${{ env.CLANG_BIN_DIR }}/clang" \
+            HOSTCXX="ccache ${{ env.CLANG_BIN_DIR }}/clang++" \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
             PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-            LD=${{ env.CLANG_PATH }}/bin/ld.lld \
-            HOSTLD=${{ env.CLANG_PATH }}/bin/ld.lld \
+            LD=${{ env.CLANG_BIN_DIR }}/ld.lld \
+            HOSTLD=${{ env.CLANG_BIN_DIR }}/ld.lld \
             CLANG_AUTOFDO_PROFILE="../android/gki/aarch64/afdo/kernel.afdo"
          
       - name: 📦 Make AnyKernel3 (创建AnyKernel3)
