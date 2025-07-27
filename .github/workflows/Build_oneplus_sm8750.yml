@@ -65,21 +65,60 @@ jobs:
             echo "下载自定义 Clang 编译器..."
             mkdir -p "$CLANG_DIR"
             cd "$CLANG_DIR"
-            wget -q https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
+            
+            # 下载文件
+            echo "正在下载 Clang..."
+            wget -O Clang-19.0.0git-20240723.tar.gz https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
+            
+            # 检查下载是否成功
+            if [ ! -f "Clang-19.0.0git-20240723.tar.gz" ]; then
+              echo "下载失败，尝试使用 curl..."
+              curl -L -O https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
+            fi
+            
+            # 验证文件存在并查看大小
+            ls -lh Clang-19.0.0git-20240723.tar.gz
+            
+            # 解压文件
+            echo "正在解压 Clang..."
             tar -xzf Clang-19.0.0git-20240723.tar.gz --strip-components=1
+            
+            # 验证解压结果
+            echo "验证解压结果..."
+            ls -la .
+            
+            # 清理压缩包
             rm Clang-19.0.0git-20240723.tar.gz
             echo "Clang 编译器下载完成"
           else
             echo "使用缓存的 Clang 编译器"
           fi
           
+          # 验证目录结构
+          echo "验证 Clang 目录结构:"
+          ls -la "$CLANG_DIR/"
+          
+          if [ -d "$CLANG_DIR/bin" ]; then
+            echo "bin 目录存在，内容:"
+            ls -la "$CLANG_DIR/bin/"
+          else
+            echo "错误: bin 目录不存在"
+            echo "尝试查找 clang 可执行文件:"
+            find "$CLANG_DIR" -name "clang" -type f 2>/dev/null || echo "未找到 clang 可执行文件"
+            exit 1
+          fi
+          
           # 设置 Clang 路径环境变量
           echo "CLANG_PATH=$CLANG_DIR" >> $GITHUB_ENV
-          echo "PATH=$CLANG_DIR/bin:$PATH" >> $GITHUB_ENV
           
           # 验证 Clang 安装
-          ls -la "$CLANG_DIR/bin/"
-          "$CLANG_DIR/bin/clang" --version
+          if [ -x "$CLANG_DIR/bin/clang" ]; then
+            "$CLANG_DIR/bin/clang" --version
+            echo "Clang 验证成功"
+          else
+            echo "错误: clang 可执行文件不存在或无执行权限"
+            exit 1
+          fi
 
       - name: 📥 Restore ccache (载入 机型：${{ env.DEVICES_NAME }}的 ccache 缓存)
         uses: actions/cache@v3
@@ -220,6 +259,20 @@ jobs:
 
       - name: 🔨 Build Kernel (构建内核)
         run: |
+          # 验证 Clang 路径
+          echo "验证 Clang 路径: ${{ env.CLANG_PATH }}"
+          if [ ! -d "${{ env.CLANG_PATH }}/bin" ]; then
+            echo "错误: Clang 目录不存在"
+            exit 1
+          fi
+          
+          if [ ! -x "${{ env.CLANG_PATH }}/bin/clang" ]; then
+            echo "错误: clang 可执行文件不存在"
+            ls -la "${{ env.CLANG_PATH }}/bin/"
+            exit 1
+          fi
+          
+          # 设置环境变量
           export PATH="/usr/lib/ccache:${{ env.CLANG_PATH }}/bin:$PATH"
           export KBUILD_BUILD_USER="kleaf"
           export KBUILD_BUILD_HOST="build-host"
@@ -230,6 +283,12 @@ jobs:
           export CCACHE_HARDLINK="true"
           export CCACHE_DIR="${{ env.CCACHE_DIR }}"
           export CCACHE_MAXSIZE="8G"
+          
+          # 检查编译器是否存在
+          echo "检查编译器工具:"
+          which clang || echo "clang not in PATH"
+          ls -la "${{ env.CLANG_PATH }}/bin/clang"
+          ls -la "${{ env.CLANG_PATH }}/bin/aarch64-linux-gnu-"* || echo "未找到 aarch64 交叉编译工具"
           
           sudo apt install -y libelf-dev
           
