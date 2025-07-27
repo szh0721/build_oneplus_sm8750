@@ -50,19 +50,36 @@ jobs:
           ccache --version
           echo "依赖安装完成"
 
-      - name: 📥 Download and setup ZyCromerZ Clang (下载并设置 ZyCromerZ Clang 19.0.0)
+      - name: 🛠 Cache Custom Clang (缓存自定义 Clang 编译器)
+        uses: actions/cache@v3
+        with:
+          path: ${{ github.workspace }}/clang
+          key: clang-19.0.0git-20240723-${{ runner.os }}
+          restore-keys: |
+            clang-19.0.0git-20240723-${{ runner.os }}
+
+      - name: 📥 Download and setup Custom Clang (下载并设置自定义 Clang 编译器)
         run: |
-          echo "下载 ZyCromerZ Clang 19.0.0..."
-          mkdir -p $GITHUB_WORKSPACE/clang
-          cd $GITHUB_WORKSPACE/clang
-          wget -q https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
-          echo "解压 Clang..."
-          tar -xzf Clang-19.0.0git-20240723.tar.gz
-          rm Clang-19.0.0git-20240723.tar.gz
-          echo "CLANG_PATH=$GITHUB_WORKSPACE/clang/Clang-19.0.0git-20240723/bin" >> $GITHUB_ENV
-          # 验证工具链
-          ls -la $GITHUB_WORKSPACE/clang/Clang-19.0.0git-20240723/bin/
-          echo "Clang 安装完成"
+          CLANG_DIR="${{ github.workspace }}/clang"
+          if [ ! -d "$CLANG_DIR/bin" ]; then
+            echo "下载自定义 Clang 编译器..."
+            mkdir -p "$CLANG_DIR"
+            cd "$CLANG_DIR"
+            wget -q https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
+            tar -xzf Clang-19.0.0git-20240723.tar.gz --strip-components=1
+            rm Clang-19.0.0git-20240723.tar.gz
+            echo "Clang 编译器下载完成"
+          else
+            echo "使用缓存的 Clang 编译器"
+          fi
+          
+          # 设置 Clang 路径环境变量
+          echo "CLANG_PATH=$CLANG_DIR" >> $GITHUB_ENV
+          echo "PATH=$CLANG_DIR/bin:$PATH" >> $GITHUB_ENV
+          
+          # 验证 Clang 安装
+          ls -la "$CLANG_DIR/bin/"
+          "$CLANG_DIR/bin/clang" --version
 
       - name: 📥 Restore ccache (载入 机型：${{ env.DEVICES_NAME }}的 ccache 缓存)
         uses: actions/cache@v3
@@ -161,15 +178,6 @@ jobs:
       - name: 🔧 Set gki_defconfig (设置编译配置)
         run: |
           cd kernel_workspace/kernel_platform
-          
-          # 首先检查配置文件是否存在
-          if [ ! -f "./common/arch/arm64/configs/gki_defconfig" ]; then
-            echo "错误：找不到 gki_defconfig 文件"
-            echo "列出可用的配置文件："
-            find ./common -name "*defconfig*" -type f
-            exit 1
-          fi
-          
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
 
           # Add VFS configuration settings
@@ -212,8 +220,7 @@ jobs:
 
       - name: 🔨 Build Kernel (构建内核)
         run: |
-          export PATH="${{ env.CLANG_PATH }}:$PATH"
-          export PATH="/usr/lib/ccache:$PATH"
+          export PATH="/usr/lib/ccache:${{ env.CLANG_PATH }}/bin:$PATH"
           export KBUILD_BUILD_USER="kleaf"
           export KBUILD_BUILD_HOST="build-host"
           export KBUILD_BUILD_TIMESTAMP="Fri Apr 25 01:56:53 UTC 2025"
@@ -233,35 +240,35 @@ jobs:
           rm -rf out 
           mkdir -p out
          
-          # 配置内核（使用ZyCromerZ Clang）
+          # 配置内核（使用自定义 Clang）
           make ARCH=arm64 SUBARCH=arm64 O=out \
             LLVM=1 \
             LLVM_IAS=1 \
-            CC="ccache clang" \
-            CXX="ccache clang++" \
-            HOSTCC="ccache clang" \
-            HOSTCXX="ccache clang++" \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            LD="${{ env.CLANG_PATH }}/ld.lld" \
-            HOSTLD="${{ env.CLANG_PATH }}/ld.lld" \
+            CC="ccache ${{ env.CLANG_PATH }}/bin/clang" \
+            CXX="ccache ${{ env.CLANG_PATH }}/bin/clang++" \
+            HOSTCC="ccache ${{ env.CLANG_PATH }}/bin/clang" \
+            HOSTCXX="ccache ${{ env.CLANG_PATH }}/bin/clang++" \
+            CROSS_COMPILE=${{ env.CLANG_PATH }}/bin/aarch64-linux-gnu- \
+            RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
+            PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
+            LD=${{ env.CLANG_PATH }}/bin/ld.lld \
+            HOSTLD=${{ env.CLANG_PATH }}/bin/ld.lld \
             CLANG_AUTOFDO_PROFILE="../android/gki/aarch64/afdo/kernel.afdo" \
             gki_defconfig
             
-          # 编译内核（使用ZyCromerZ Clang）
+          # 编译内核（使用自定义 Clang）
           make ARCH=arm64 SUBARCH=arm64 -j$(nproc --all) O=out \
             LLVM=1 \
             LLVM_IAS=1 \
-            CC="ccache clang" \
-            CXX="ccache clang++" \
-            HOSTCC="ccache clang" \
-            HOSTCXX="ccache clang++" \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            LD="${{ env.CLANG_PATH }}/ld.lld" \
-            HOSTLD="${{ env.CLANG_PATH }}/ld.lld" \
+            CC="ccache ${{ env.CLANG_PATH }}/bin/clang" \
+            CXX="ccache ${{ env.CLANG_PATH }}/bin/clang++" \
+            HOSTCC="ccache ${{ env.CLANG_PATH }}/bin/clang" \
+            HOSTCXX="ccache ${{ env.CLANG_PATH }}/bin/clang++" \
+            CROSS_COMPILE=${{ env.CLANG_PATH }}/bin/aarch64-linux-gnu- \
+            RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
+            PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
+            LD=${{ env.CLANG_PATH }}/bin/ld.lld \
+            HOSTLD=${{ env.CLANG_PATH }}/bin/ld.lld \
             CLANG_AUTOFDO_PROFILE="../android/gki/aarch64/afdo/kernel.afdo"
          
       - name: 📦 Make AnyKernel3 (创建AnyKernel3)
