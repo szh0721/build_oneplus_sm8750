@@ -60,111 +60,36 @@ jobs:
 
       - name: 📥 Download and setup Custom Clang (下载并设置自定义 Clang 编译器)
         run: |
-          CLANG_DIR="${{ github.workspace }}/clang"
-          if [ ! -f "$CLANG_DIR/.clang_setup_complete" ]; then
-            echo "下载自定义 Clang 编译器..."
-            rm -rf "$CLANG_DIR"
-            mkdir -p "$CLANG_DIR"
-            cd "$CLANG_DIR"
-            
-            # 下载文件
-            echo "正在下载 Clang..."
-            wget -O Clang-19.0.0git-20240723.tar.gz https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
-            
-            # 检查下载是否成功
-            if [ ! -f "Clang-19.0.0git-20240723.tar.gz" ]; then
-              echo "下载失败，尝试使用 curl..."
-              curl -L -O https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
-            fi
-            
-            # 验证文件存在并查看大小
-            ls -lh Clang-19.0.0git-20240723.tar.gz
-            
-            # 解压文件（不使用 strip-components）
-            echo "正在解压 Clang..."
-            tar -xzf Clang-19.0.0git-20240723.tar.gz
-            
-            # 查看解压后的结构
-            echo "解压后的目录结构："
-            ls -la .
-            
-            # 查找 clang 可执行文件的实际位置
-            echo "查找 clang 可执行文件..."
-            find . -name "clang" -type f -executable 2>/dev/null | head -5
-            
-            # 尝试不同的可能路径
-            CLANG_BINARY=""
-            for path in "./bin/clang" "./clang" "./*/bin/clang" "./clang-*/bin/clang" "./*/clang"; do
-              if [ -x "$path" ]; then
-                CLANG_BINARY="$path"
-                echo "找到 clang: $path"
-                break
-              fi
-            done
-            
-            if [ -z "$CLANG_BINARY" ]; then
-              echo "错误: 未找到 clang 可执行文件"
-              echo "完整目录结构："
-              find . -type f -name "*clang*" 2>/dev/null || echo "未找到包含 clang 的文件"
-              exit 1
-            fi
-            
-            # 获取 clang 的实际目录
-            CLANG_REAL_DIR=$(dirname "$CLANG_BINARY")
-            CLANG_ROOT_DIR=$(dirname "$CLANG_REAL_DIR")
-            
-            echo "Clang 根目录: $CLANG_ROOT_DIR"
-            echo "Clang 二进制目录: $CLANG_REAL_DIR"
-            
-            # 如果不是在根目录的 bin 下，则移动文件
-            if [ "$CLANG_ROOT_DIR" != "." ]; then
-              echo "重新组织目录结构..."
-              mv "$CLANG_ROOT_DIR"/* ./ 2>/dev/null || true
-              rmdir "$CLANG_ROOT_DIR" 2>/dev/null || true
-            fi
-            
-            # 清理压缩包
-            rm Clang-19.0.0git-20240723.tar.gz
-            
-            # 标记设置完成
-            touch .clang_setup_complete
-            
-            echo "Clang 编译器下载完成"
-          else
-            echo "使用缓存的 Clang 编译器"
-          fi
-          
-          # 验证目录结构
-          echo "验证 Clang 目录结构:"
-          ls -la "$CLANG_DIR/"
-          
-          # 查找 clang 可执行文件
-          CLANG_BINARY=""
-          for path in "$CLANG_DIR/bin/clang" "$CLANG_DIR/clang"; do
-            if [ -x "$path" ]; then
-              CLANG_BINARY="$path"
-              break
-            fi
-          done
-          
-          if [ -z "$CLANG_BINARY" ]; then
-            echo "错误: 未找到 clang 可执行文件"
-            echo "bin 目录内容:"
-            ls -la "$CLANG_DIR/bin/" 2>/dev/null || echo "bin 目录不存在"
-            echo "查找所有 clang 文件:"
-            find "$CLANG_DIR" -name "*clang*" -type f 2>/dev/null || echo "未找到 clang 文件"
-            exit 1
-          fi
-          
-          # 设置 Clang 路径环境变量
-          CLANG_BIN_DIR=$(dirname "$CLANG_BINARY")
-          echo "CLANG_PATH=$(dirname "$CLANG_BIN_DIR")" >> $GITHUB_ENV
-          echo "CLANG_BIN_DIR=$CLANG_BIN_DIR" >> $GITHUB_ENV
-          
-          # 验证 Clang 安装
-          echo "验证 Clang 安装:"
-          "$CLANG_BINARY" --version
-          echo "Clang 验证成功"
+         CLANG_DIR="${{ github.workspace }}/clang"
+
+         if [ ! -f "$CLANG_DIR/.clang_setup_complete" ]; then
+          echo "下载并解压 Clang..."
+          rm -rf "$CLANG_DIR"
+          mkdir -p "$CLANG_DIR"
+          cd "$CLANG_DIR"
+
+          # 下载 Clang 压缩包
+          wget -O clang.tar.gz https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
+
+          # 解压（已知 tar 内部就是 bin/include/lib/...）
+          tar -xzf clang.tar.gz
+          rm clang.tar.gz
+
+          # 创建标记文件
+          touch .clang_setup_complete
+
+          echo "Clang 下载与解压完成"
+         else
+          echo "使用缓存的 Clang 编译器"
+         fi
+
+         # 设置环境变量
+         echo "CLANG_PATH=$CLANG_DIR" >> $GITHUB_ENV
+         echo "CLANG_BIN_DIR=$CLANG_DIR/bin" >> $GITHUB_ENV
+
+         #验证 Clang 是否工作正常
+         "$CLANG_DIR/bin/clang" --version
+
 
       - name: 📥 Restore ccache (载入 机型：${{ env.DEVICES_NAME }}的 ccache 缓存)
         uses: actions/cache@v3
