@@ -356,7 +356,7 @@ jobs:
          cd common/kernel/sched  
           
 
-            - name: 🔨 Build Kernel (构建内核)
+      - name: 🔨 Build Kernel (构建内核)
         run: |
           export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"          
           export CCACHE_COMPILERCHECK="%compiler% -dumpmachine; %compiler% -dumpversion"
