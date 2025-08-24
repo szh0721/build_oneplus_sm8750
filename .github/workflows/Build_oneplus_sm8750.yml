@@ -25,71 +25,38 @@ jobs:
           git config --global user.name "Q1udaoyu"
           git config --global user.email "sucisama2888@gmail.com"
 
+      - name: 🛠 Configure APT caching (配置APT缓存)
+        run: |
+          APT_CACHE_DIR="$HOME/apt-cache"
+          mkdir -p "$APT_CACHE_DIR"/{archives,lists/partial}
+          echo "Dir::Cache \"$APT_CACHE_DIR\";" | sudo tee /etc/apt/apt.conf.d/90user-cache
+          echo "Dir::Cache::archives \"$APT_CACHE_DIR/archives\";" | sudo tee -a /etc/apt/apt.conf.d/90user-cache
+          echo "Dir::State::lists \"$APT_CACHE_DIR/lists\";" | sudo tee -a /etc/apt/apt.conf.d/90user-cache
+          echo "Acquire::Check-Valid-Until \"false\";" | sudo tee -a /etc/apt/apt.conf.d/90user-cache
+          echo "Acquire::Languages \"none\";" | sudo tee -a /etc/apt/apt.conf.d/90user-cache
+          sudo chown -R $USER:$USER "$APT_CACHE_DIR"
+
       - name: 🛠 Cache APT packages (缓存APT包)
         uses: actions/cache@v3
         with:
-          path: /var/lib/apt/lists
-          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/Build_oneplus_sm8750.yml') }}
+          path: ${{ env.HOME }}/apt-cache
+          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/Build_oneplus_13t_sm8750.yml') }}
           restore-keys: |
             ${{ runner.os }}-apt-
 
       - name: 📦 Install dependencies (安装依赖)
         run: |
-          if [ ! -d "/var/lib/apt/lists" ] || [ -z "$(ls -A /var/lib/apt/lists)" ]; then
-            echo "更新APT包列表..."
-            sudo apt update -qq
-          else
-            echo "使用缓存的APT列表"
-          fi
-          sudo apt install -y --no-install-recommends \
-            python3 git curl ccache libelf-dev \
-            build-essential flex bison libssl-dev \
+          sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock
+          APT_CACHE_DIR="$HOME/apt-cache"
+          mkdir -p "$APT_CACHE_DIR/lists/partial"
+          sudo apt -o Dir::Cache="$APT_CACHE_DIR" update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt -o Dir::Cache="$APT_CACHE_DIR" install -yq --no-install-recommends \
+            python3 p7zip-full git curl ccache libelf-dev \
+            build-essential libelf-dev flex bison libssl-dev \
             libncurses-dev liblz4-tool zlib1g-dev \
             libxml2-utils rsync unzip
-
-          ccache --version
-          echo "依赖安装完成"
-
-      - name: 🛠 Cache Custom Clang (缓存自定义 Clang 编译器)
-        uses: actions/cache@v3
-        with:
-          path: ${{ github.workspace }}/clang
-          key: clang-19.0.0git-20240723-${{ runner.os }}
-          restore-keys: |
-            clang-19.0.0git-20240723-${{ runner.os }}
-
-      - name: 📥 Download and setup Custom Clang (下载并设置自定义 Clang 编译器)
-        run: |
-         CLANG_DIR="${{ github.workspace }}/clang"
-
-         if [ ! -f "$CLANG_DIR/.clang_setup_complete" ]; then
-          echo "下载并解压 Clang..."
-          rm -rf "$CLANG_DIR"
-          mkdir -p "$CLANG_DIR"
-          cd "$CLANG_DIR"
-
-          # 下载 Clang 压缩包
-          wget -O clang.tar.gz https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
-
-          # 解压（已知 tar 内部就是 bin/include/lib/...）
-          tar -xzf clang.tar.gz
-          rm clang.tar.gz
-
-          # 创建标记文件
-          touch .clang_setup_complete
-
-          echo "Clang 下载与解压完成"
-         else
-          echo "使用缓存的 Clang 编译器"
-         fi
-
-         # 设置环境变量
-         echo "CLANG_PATH=$CLANG_DIR" >> $GITHUB_ENV
-         echo "CLANG_BIN_DIR=$CLANG_DIR/bin" >> $GITHUB_ENV
-
-         #验证 Clang 是否工作正常
-         "$CLANG_DIR/bin/clang" --version
-
+          
+          echo "✅ 依赖安装完成"
 
       - name: 📥 Restore ccache (载入 机型：${{ env.DEVICES_NAME }}的 ccache 缓存)
         uses: actions/cache@v3
@@ -131,7 +98,7 @@ jobs:
       - name: 📥 Initialize repo and sync (初始化repo并同步内核源码)
         run: |
          mkdir kernel_workspace && cd kernel_workspace
-         repo init -u https://github.com/szh0721/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${REPO_MANIFEST}.xml --depth=1
+         repo init -u https://github.com/HanKuCha/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${REPO_MANIFEST}.xml --depth=1
          repo --trace sync -c -j$(nproc --all) --no-tags
          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
@@ -226,27 +193,12 @@ jobs:
         run: |
          cd kernel_workspace/kernel_platform
          sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
-         sudo sed -i 's/-4k/-android15-8-gba3bcfd39307-abogki413159095-4k/g' ./common/arch/arm64/configs/gki_defconfig  
+         sudo sed -i 's/-4k/-android15-8-gd43086512890-abogki423825152-4k/g' ./common/arch/arm64/configs/gki_defconfig  
 
       - name: 🔨 Build Kernel (构建内核)
         run: |
-          # 验证 Clang 路径
-          echo "验证 Clang 路径: ${{ env.CLANG_PATH }}"
-          echo "验证 Clang 二进制目录: ${{ env.CLANG_BIN_DIR }}"
-          
-          if [ ! -d "${{ env.CLANG_BIN_DIR }}" ]; then
-            echo "错误: Clang 二进制目录不存在"
-            exit 1
-          fi
-          
-          if [ ! -x "${{ env.CLANG_BIN_DIR }}/clang" ]; then
-            echo "错误: clang 可执行文件不存在"
-            ls -la "${{ env.CLANG_BIN_DIR }}/"
-            exit 1
-          fi
-          
-          # 设置环境变量
-          export PATH="/usr/lib/ccache:${{ env.CLANG_BIN_DIR }}:$PATH"
+          # 使用内核源码仓库自带的clang编译器
+          export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
           export KBUILD_BUILD_USER="kleaf"
           export KBUILD_BUILD_HOST="build-host"
           export KBUILD_BUILD_TIMESTAMP="Fri Apr 25 01:56:53 UTC 2025"
@@ -257,18 +209,6 @@ jobs:
           export CCACHE_DIR="${{ env.CCACHE_DIR }}"
           export CCACHE_MAXSIZE="8G"
           
-          # 检查编译器是否存在
-          echo "检查编译器工具:"
-          which clang
-          "${{ env.CLANG_BIN_DIR }}/clang" --version
-          
-          # 检查交叉编译工具
-          echo "检查交叉编译工具:"
-          ls -la "${{ env.CLANG_BIN_DIR }}/aarch64"* 2>/dev/null || echo "未找到 aarch64 前缀的工具"
-          ls -la "${{ env.CLANG_BIN_DIR }}/llvm-"* 2>/dev/null || echo "未找到 llvm 工具"
-          
-          sudo apt install -y libelf-dev
-          
           cd kernel_workspace/kernel_platform/common
           
           # 清理构建环境
@@ -276,36 +216,11 @@ jobs:
           rm -rf out 
           mkdir -p out
          
-          # 配置内核（使用自定义 Clang）
-          make ARCH=arm64 SUBARCH=arm64 O=out \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            CC="ccache ${{ env.CLANG_BIN_DIR }}/clang" \
-            CXX="ccache ${{ env.CLANG_BIN_DIR }}/clang++" \
-            HOSTCC="ccache ${{ env.CLANG_BIN_DIR }}/clang" \
-            HOSTCXX="ccache ${{ env.CLANG_BIN_DIR }}/clang++" \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
-            PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-            LD=${{ env.CLANG_BIN_DIR }}/ld.lld \
-            HOSTLD=${{ env.CLANG_BIN_DIR }}/ld.lld \
-            CLANG_AUTOFDO_PROFILE="../android/gki/aarch64/afdo/kernel.afdo" \
-            gki_defconfig
+          # 配置内核（使用仓库自带的clang）
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 gki_defconfig
             
-          # 编译内核（使用自定义 Clang）
-          make ARCH=arm64 SUBARCH=arm64 -j$(nproc --all) O=out \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            CC="ccache ${{ env.CLANG_BIN_DIR }}/clang" \
-            CXX="ccache ${{ env.CLANG_BIN_DIR }}/clang++" \
-            HOSTCC="ccache ${{ env.CLANG_BIN_DIR }}/clang" \
-            HOSTCXX="ccache ${{ env.CLANG_BIN_DIR }}/clang++" \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
-            PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-            LD=${{ env.CLANG_BIN_DIR }}/ld.lld \
-            HOSTLD=${{ env.CLANG_BIN_DIR }}/ld.lld \
-            CLANG_AUTOFDO_PROFILE="../android/gki/aarch64/afdo/kernel.afdo"
+          # 编译内核（使用仓库自带的clang）
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 Image
          
       - name: 📦 Make AnyKernel3 (创建AnyKernel3)
         run: |
