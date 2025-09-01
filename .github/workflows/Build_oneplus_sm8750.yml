@@ -303,6 +303,10 @@ jobs:
             LD=${{ env.CLANG_BIN_DIR }}/ld.lld \
             HOSTLD=${{ env.CLANG_BIN_DIR }}/ld.lld \
             CLANG_AUTOFDO_PROFILE="../android/gki/aarch64/afdo/kernel.afdo"
+
+      - name: 📊 Check ccache statistics (检查ccache统计信息)
+        run: |
+          ccache -s
          
       - name: 📦 Make AnyKernel3 (创建AnyKernel3)
         run: |
