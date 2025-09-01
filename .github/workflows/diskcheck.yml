@@ -1,0 +1,19 @@
+name: Disk Usage Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-disk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check disk usage
+        run: |
+          echo "==== Disk usage (df -h) ===="
+          df -h
+          echo ""
+          echo "==== Top-level folders in /home/runner ===="
+          du -sh /home/runner/* || true
+          echo ""
+          echo "==== Root directory size ===="
+          du -sh /* 2>/dev/null || true
