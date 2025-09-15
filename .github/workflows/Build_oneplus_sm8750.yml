@@ -138,7 +138,6 @@ jobs:
          cd kernel_workspace/kernel_platform
          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/susfs-main/kernel/setup.sh" | bash -s susfs-main
          cd ./KernelSU
-         git checkout $(git rev-list HEAD -n 8 | tail -n1)
          KSU_API_VERSION_LOCAL=$(grep -m1 -oP 'KSU_API_VERSION_LOCAL\s*:=\s*\K\d+' kernel/Makefile || echo "1")
          KSU_COMMIT_HASH=$(git rev-parse --short=8 HEAD)
          KSU_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
