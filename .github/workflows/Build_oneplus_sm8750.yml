@@ -195,7 +195,7 @@ jobs:
         run: |
          cd kernel_workspace/kernel_platform
          sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
-         sudo sed -i 's/-4k/-android15-8-gd43086512890-abogki423825152-4k/g' ./common/arch/arm64/configs/gki_defconfig  
+         sudo sed -i 's/-4k/-android15-8-g29d86c5fc9dd-abogki428889875-4k/g' ./common/arch/arm64/configs/gki_defconfig  
 
       - name: 🔨 Build Kernel (构建内核)
         run: |
@@ -203,7 +203,7 @@ jobs:
           export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
           export KBUILD_BUILD_USER="kleaf"
           export KBUILD_BUILD_HOST="build-host"
-          export KBUILD_BUILD_TIMESTAMP="Fri Apr 25 01:56:53 UTC 2025"
+          export KBUILD_BUILD_TIMESTAMP="Tue Jul 1 19:48:18 UTC 2025"
           
           export CCACHE_COMPILERCHECK="%compiler% -dumpmachine; %compiler% -dumpversion"
           export CCACHE_NOHASHDIR="true"
