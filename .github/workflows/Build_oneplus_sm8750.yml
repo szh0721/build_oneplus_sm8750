@@ -223,7 +223,21 @@ jobs:
         run: |
          cd kernel_workspace/kernel_platform
          sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
-         sudo sed -i 's/-4k/-android15-8-gba3bcfd39307-abogki413159095-4k/g' ./common/arch/arm64/configs/gki_defconfig  
+         sudo sed -i 's/-4k/-android15-8-gba3bcfd39307-abogki413159095-4k/g' ./common/arch/arm64/configs/gki_defconfig
+
+      - name: Free disk space
+        run: |
+         sudo rm -rf /usr/share/dotnet
+         sudo rm -rf /usr/local/lib/android
+         sudo rm -rf /usr/local/share/boost
+         sudo rm -rf /opt/ghc
+         sudo rm -rf /usr/local/.ghcup
+         sudo rm -rf /home/linuxbrew
+         sudo apt-get clean
+         sudo rm -rf /var/lib/apt/lists/*
+         sudo docker image prune -af
+         sudo docker container prune -f
+         df -h
 
       - name: 🔨 Build Kernel (构建内核)
         run: |
