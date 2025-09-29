@@ -1,11 +1,11 @@
-name: Build_oneplus_13t_sm8750_new
+name: Build_oneplus_13t_sm8750
+
 on:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Set the default working directory for all steps in this job to /mnt
     defaults:
       run:
         working-directory: /mnt
@@ -22,7 +22,6 @@ jobs:
 
       - name: ⚙️ Set device-specific CCACHE_DIR (设置对应机型Cceche路径)
         run: |
-          # $HOME is an absolute path, so it does not need to be changed.
           echo "CCACHE_DIR=$HOME/.ccache_${REPO_MANIFEST}" >> $GITHUB_ENV
 
       - name: 📦 Configure Git (设置下载账户)
@@ -33,8 +32,103 @@ jobs:
       - name: 🛠 Cache APT packages (缓存APT包)
         uses: actions/cache@v3
         with:
-          # This is an absolute path and does not need to be changed.
           path: /var/lib/apt/lists
+          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/Build_oneplus_sm8750.yml') }}
+          restore-keys: ${{ runner.os }}-apt-
+
+      - name: 📦 Install dependencies (安装依赖)
+        run: |
+          echo "更新APT包列表..."
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            python3 git curl ccache libelf-dev \
+            build-essential flex bison libssl-dev \
+            libncurses-dev liblz4-tool zlib1g-dev \
+            libxml2-utils rsync unzip
+          ccache --version
+          echo "依赖安装完成"
+
+      - name: 🛠 Cache Custom Clang (缓存自定义 Clang 编译器)
+        uses: actions/cache@v3
+        with:
+          path: /mnt/clang
+          key: clang-19.0.0git-20240723-${{ runner.os }}
+          restore-keys: clang-19.0.0git-20240723-${{ runner.os }}
+
+      - name: 📥 Download and setup Custom Clang (下载并设置自定义 Clang 编译器)
+        run: |
+          CLANG_DIR="/mnt/clang"
+          if [ ! -f "$CLANG_DIR/.clang_setup_complete" ]; then
+            echo "下载并解压 Clang..."
+            sudo rm -rf "$CLANG_DIR"
+            sudo mkdir -p "$CLANG_DIR"
+            sudo chown $USER:$USER "$CLANG_DIR"
+            cd "$CLANG_DIR"
+
+            wget -O clang.tar.gz https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
+            tar -xzf clang.tar.gz
+            rm clang.tar.gz
+
+            touch .clang_setup_complete
+            echo "Clang 下载与解压完成"
+          else
+            echo "使用缓存的 Clang 编译器"
+          fi
+
+          echo "CLANG_PATH=$CLANG_DIR" >> $GITHUB_ENV
+          echo "CLANG_BIN_DIR=$CLANG_DIR/bin" >> $GITHUB_ENV
+          "$CLANG_DIR/bin/clang" --version
+
+      - name: 📥 Restore ccache (载入 机型：${{ env.DEVICES_NAME }}的 ccache 缓存)
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ env.REPO_MANIFEST }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ env.REPO_MANIFEST }}-
+            ccache-${{ runner.os }}-
+
+      - name: 📥 Init ccache (如果是第一次运行则初始化Cceche)
+        run: |
+          export CCACHE_COMPILERCHECK="%compiler% -dumpmachine; %compiler% -dumpversion"
+          export CCACHE_NOHASHDIR="true"
+          export CCACHE_HARDLINK="true"
+          export CCACHE_DIR="${{ env.CCACHE_DIR }}"
+          export CCACHE_MAXSIZE="8G"
+
+          INIT_FLAG="$CCACHE_DIR/.ccache_initialized"
+          if command -v ccache >/dev/null 2>&1; then
+            if [ ! -f "$INIT_FLAG" ]; then
+              echo "初始化 ccache ($CCACHE_DIR)..."
+              mkdir -p "$CCACHE_DIR"
+              ccache -M "$CCACHE_MAXSIZE"
+              touch "$INIT_FLAG"
+            else
+              echo "ccache 已初始化，跳过"
+            fi
+          else
+            echo "未安装 ccache，跳过"
+          fi
+
+      - name: 📥 Install repo tool (下载repo工具)
+        run: |
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
+          chmod a+x ~/repo
+          sudo mv ~/repo /usr/local/bin/repo
+
+      - name: 📥 Initialize repo and sync (初始化repo并同步内核源码)
+        run: |
+          sudo mkdir -p /mnt/kernel_workspace
+          sudo chown $USER:$USER /mnt/kernel_workspace
+          cd /mnt/kernel_workspace
+          repo init -u https://github.com/szh0721/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${REPO_MANIFEST}.xml --depth=1
+          repo --trace sync -c -j$(nproc --all) --no-tags
+          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+
+      # ⚙️ 这里开始是你原有的 SukiSU Ultra / SUSFS / 编译流程 ...
+      # 我保留逻辑不变，只在涉及 /mnt 下 mkdir 的地方加 sudo + chown
+      # 省略后续，保持和之前一致          path: /var/lib/apt/lists
           key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/Build_oneplus_sm8750.yml') }}
           restore-keys: |
             ${{ runner.os }}-apt-
