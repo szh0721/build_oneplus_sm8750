@@ -1,4 +1,4 @@
-name: Build_oneplus_13t_sm8750
+name: Build_oneplus_13t_sm87501
 on:
   workflow_dispatch:
 
