@@ -1,19 +1,26 @@
-name: Build_oneplus_13t_sm8750
+# [MODIFIED SCRIPT]
+name: Build_oneplus_13t_sm8750_in_mnt
 on:
   workflow_dispatch:
+
+# MODIFIED: Define a global working directory under /mnt
+env:
+  WORK_DIR: /mnt/workspace
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Set the default working directory for all steps in this job to /mnt
-    defaults:
-      run:
-        working-directory: /mnt
     steps:
       - name: 📊 Check disk space (检查磁盘空间)
         run: |
           echo "构建前磁盘空间："
           df -h
+
+      - name: ⚙️ Setup Workspace (创建工作目录)
+        run: |
+          echo "创建工作目录 ${{ env.WORK_DIR }}"
+          sudo mkdir -p ${{ env.WORK_DIR }}
+          sudo chown $USER:$USER ${{ env.WORK_DIR }}
 
       - name: ⚙️ Set REPO_MANIFEST (设置对应机型配置文件)
         run: |
@@ -22,7 +29,8 @@ jobs:
 
       - name: ⚙️ Set device-specific CCACHE_DIR (设置对应机型Cceche路径)
         run: |
-          echo "CCACHE_DIR=$HOME/.ccache_${REPO_MANIFEST}" >> $GITHUB_ENV
+          # MODIFIED: CCACHE_DIR is now inside the WORK_DIR
+          echo "CCACHE_DIR=${{ env.WORK_DIR }}/.ccache_${{ env.REPO_MANIFEST || 'oneplus_13t' }}" >> $GITHUB_ENV
 
       - name: 📦 Configure Git (设置下载账户)
         run: |
@@ -41,53 +49,51 @@ jobs:
         run: |
           echo "更新APT包列表..."
           sudo apt-get update -qq
-
           sudo apt-get install -y --no-install-recommends \
           python3 git curl ccache libelf-dev \
           build-essential flex bison libssl-dev \
           libncurses-dev liblz4-tool zlib1g-dev \
           libxml2-utils rsync unzip
-
           ccache --version
           echo "依赖安装完成"
 
       - name: 🛠 Cache Custom Clang (缓存自定义 Clang 编译器)
         uses: actions/cache@v3
         with:
-          path: /mnt/clang
+          # MODIFIED: Cache path now points to WORK_DIR
+          path: ${{ env.WORK_DIR }}/clang
           key: clang-19.0.0git-20240723-${{ runner.os }}
           restore-keys: |
             clang-19.0.0git-20240723-${{ runner.os }}
 
       - name: 📥 Download and setup Custom Clang (下载并设置自定义 Clang 编译器)
         run: |
-         CLANG_DIR="/mnt/clang"
+         # MODIFIED: All operations are now relative to WORK_DIR
+         CLANG_DIR="${{ env.WORK_DIR }}/clang"
 
          if [ ! -f "$CLANG_DIR/.clang_setup_complete" ]; then
           echo "下载并解压 Clang..."
-          sudo rm -rf "$CLANG_DIR"
-          sudo mkdir -p "$CLANG_DIR"
-          sudo chown -R $USER:$USER "$CLANG_DIR"
-          
+          rm -rf "$CLANG_DIR"
+          mkdir -p "$CLANG_DIR"
           cd "$CLANG_DIR"
-
           wget -O clang.tar.gz https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz
           tar -xzf clang.tar.gz
           rm clang.tar.gz
           touch .clang_setup_complete
-
           echo "Clang 下载与解压完成"
          else
           echo "使用缓存的 Clang 编译器"
          fi
-
+         
+         # MODIFIED: Set environment variables with the new absolute path
          echo "CLANG_PATH=$CLANG_DIR" >> $GITHUB_ENV
-         echo "PATH=$CLANG_DIR/bin:$PATH" >> $GITHUB_ENV
-
+         echo "CLANG_BIN_DIR=$CLANG_DIR/bin" >> $GITHUB_ENV
+         "$CLANG_DIR/bin/clang" --version
 
       - name: 📥 Restore ccache (载入 机型：${{ env.DEVICES_NAME }}的 ccache 缓存)
         uses: actions/cache@v3
         with:
+          # MODIFIED: Cache path now uses the CCACHE_DIR variable which is inside WORK_DIR
           path: ${{ env.CCACHE_DIR }}
           key: ccache-${{ runner.os }}-${{ github.ref }}-${{ env.REPO_MANIFEST }}
           restore-keys: |
@@ -96,13 +102,8 @@ jobs:
 
       - name: 📥 Init ccache (如果是第一次运行则初始化Cceche)
         run: |
-          export CCACHE_COMPILERCHECK="%compiler% -dumpmachine; %compiler% -dumpversion"
-          export CCACHE_NOHASHDIR="true"
-          export CCACHE_HARDLINK="true"
           export CCACHE_DIR="${{ env.CCACHE_DIR }}"
           export CCACHE_MAXSIZE="8G"
-          export USE_CCACHE=1
-
           INIT_FLAG="$CCACHE_DIR/.ccache_initialized"
           if command -v ccache >/dev/null 2>&1; then
             if [ ! -f "$INIT_FLAG" ]; then
@@ -124,18 +125,19 @@ jobs:
          sudo mv ~/repo /usr/local/bin/repo
 
       - name: 📥 Initialize repo and sync (初始化repo并同步内核源码)
+        # MODIFIED: Change directory to WORK_DIR before running repo init
         run: |
-         sudo mkdir -p kernel_workspace
-         sudo chown -R $USER:$USER kernel_workspace
-         cd kernel_workspace
+         cd ${{ env.WORK_DIR }}
+         mkdir kernel_workspace && cd kernel_workspace
          repo init -u https://github.com/szh0721/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${REPO_MANIFEST}.xml --depth=1
          repo --trace sync -c -j$(nproc --all) --no-tags
          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
-
+         
       - name: ⚙️ Set up SukiSU Ultra (配置 SukiSU Ultra)
+        # MODIFIED: Change to the correct directory inside WORK_DIR
+        working-directory: ${{ env.WORK_DIR }}/kernel_workspace/kernel_platform
         run: |
-         cd kernel_workspace/kernel_platform
          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/susfs-main/kernel/setup.sh" | bash -s susfs-main
          cd ./KernelSU
          KSU_API_VERSION_LOCAL=$(grep -m1 -oP 'KSU_API_VERSION_LOCAL\s*:=\s*\K\d+' kernel/Makefile || echo "1")
@@ -144,83 +146,107 @@ jobs:
          KSU_API_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10000 "+" 700)
          KSU_VERSION="v${KSU_API_VERSION_LOCAL}-${KSU_COMMIT_HASH}@${KSU_BRANCH_NAME}\\"
          echo "KSUVER=$KSU_API_VERSION" >> $GITHUB_ENV
-         
-         escape_sed() {
-             echo "$1" | sed 's/[][\/\.*^$]/\\&/g'
-         }
-         
+         escape_sed() { echo "$1" | sed 's/[][\/\.*^$]/\\&/g'; }
          OLD_KSU_VERSION=$(grep -m1 -oP 'ccflags-y\s*\+=\s*-DKSU_VERSION=\\"\K[^"]+' kernel/Makefile || echo "\$(KSU_KERNEL_VERSION)\\")
          OLD_KSU_API_VERSION=$(grep -m1 -oP 'ccflags-y\s*\+=\s*-DKSU_API_VERSION=\K\d+' kernel/Makefile || echo "\$(KSU_API_VERSION)")
-         
          OLD_KSU_VERSION_ESC=$(escape_sed "$OLD_KSU_VERSION")
          KSU_VERSION_ESC=$(escape_sed "$KSU_VERSION")
          OLD_KSU_API_VERSION_ESC=$(escape_sed "$OLD_KSU_API_VERSION")
          KSU_API_VERSION_ESC=$(escape_sed "$KSU_API_VERSION")
-         
          sed -i.bak "s/-DKSU_VERSION=\\\\\"${OLD_KSU_VERSION_ESC}\\\\\"/-DKSU_VERSION=\\\\\"${KSU_VERSION_ESC}\\\\\"/" kernel/Makefile
          sed -i.bak "s/-DKSU_API_VERSION=${OLD_KSU_API_VERSION_ESC}/-DKSU_API_VERSION=${KSU_API_VERSION_ESC}/" kernel/Makefile
         
       - name: 🔧 Set up SUSFS (配置 SUSFS)
+        # MODIFIED: Change to the correct directory inside WORK_DIR
+        working-directory: ${{ env.WORK_DIR }}/kernel_workspace
         run: |
-           cd kernel_workspace
            git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android15-6.6
            git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git
-
            cd kernel_platform        
            cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
            cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
            cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-
            cd ./common
            patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || true
            cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
            patch -p1 -F 3 < syscall_hooks.patch
            echo "完成"
 
-      # --- START: ADDED AND CORRECTED STEPS ---
-      - name: 🚀 Compile Kernel (编译内核)
+      - name: 🔧 Set gki_defconfig (设置编译配置)
+        # MODIFIED: Change to the correct directory inside WORK_DIR
+        working-directory: ${{ env.WORK_DIR }}/kernel_workspace/kernel_platform
         run: |
-          cd kernel_workspace/kernel_platform
-          
-          # Set up build environment for GKI kernels
-          source build/envsetup.sh
-          lunch vendor/${{ env.REPO_MANIFEST }}_GKI.bp
-          
-          # Start the build process
-          # The LLVM variables ensure our custom Clang is used
-          build/build.sh \
-            --lto=thin \
-            --skip-defconfig \
-            --skip-fetch-artifacts
+          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_F2FS_FS_COMPRESSION=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_F2FS_FS_LZ4=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_F2FS_FS_LZ4HC=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_F2FS_FS_ZSTD=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          sudo sed -i 's/check_defconfig//' ./common/build.config.gki
+          cd common
+          git add -A && git commit -a -m "BUILD Kernel"
 
-      - name: 📦 Package with AnyKernel3 (使用AnyKernel3打包)
+      - name: 🔧 Set Kernel name (设置内核名称)
+        # MODIFIED: Change to the correct directory inside WORK_DIR
+        working-directory: ${{ env.WORK_DIR }}/kernel_workspace/kernel_platform
         run: |
-          # Clone the AnyKernel3 repository
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git
-          
-          # Define paths for clarity
-          KERNEL_OUT_DIR="/mnt/kernel_workspace/kernel_platform/out/android15-6.6/dist"
-          AK3_DIR="/mnt/AnyKernel3"
-          
-          # Verify that the kernel image and dtbo exist before proceeding
-          if [ ! -f "$KERNEL_OUT_DIR/Image" ] || [ ! -f "$KERNEL_OUT_DIR/dtbo.img" ]; then
-            echo "Kernel build artifacts not found!"
-            exit 1
-          fi
-          
-          # Copy the compiled kernel artifacts into the AnyKernel3 directory
-          cp "$KERNEL_OUT_DIR/Image" "$AK3_DIR/"
-          cp "$KERNEL_OUT_DIR/dtbo.img" "$AK3_DIR/"
-          
-          # Navigate into the AnyKernel3 directory to create the zip
-          cd "$AK3_DIR"
-          
-          # Create the final flashable zip file
-          zip -r9 "../KSU-SFS-${{ env.DEVICES_NAME }}-$(date +%Y%m%d).zip" ./* -x ".git/*" "README.md" ".github/*"
+         sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
+         sudo sed -i 's/-4k/-android15-8-gba3bcfd39307-abogki413159095-4k/g' ./common/arch/arm64/configs/gki_defconfig  
 
-      - name: ⬆️ Upload Artifact (上传构建产物)
+      - name: 🔨 Build Kernel (构建内核)
+        # MODIFIED: Change to the correct directory inside WORK_DIR
+        working-directory: ${{ env.WORK_DIR }}/kernel_workspace/kernel_platform/common
+        run: |
+          echo "验证 Clang 路径: ${{ env.CLANG_PATH }}"
+          if [ ! -d "${{ env.CLANG_BIN_DIR }}" ]; then echo "错误: Clang 二进制目录不存在"; exit 1; fi
+          export PATH="/usr/lib/ccache:${{ env.CLANG_BIN_DIR }}:$PATH"
+          export KBUILD_BUILD_USER="kleaf"
+          export KBUILD_BUILD_HOST="build-host"
+          export KBUILD_BUILD_TIMESTAMP="Fri Apr 25 01:56:53 UTC 2025"
+          export CCACHE_DIR="${{ env.CCACHE_DIR }}"
+          make clean && make mrproper
+          rm -rf out && mkdir -p out
+          make ARCH=arm64 SUBARCH=arm64 O=out LLVM=1 LLVM_IAS=1 CC="ccache ${{ env.CLANG_BIN_DIR }}/clang" CXX="ccache ${{ env.CLANG_BIN_DIR }}/clang++" HOSTCC="ccache ${{ env.CLANG_BIN_DIR }}/clang" HOSTCXX="ccache ${{ env.CLANG_BIN_DIR }}/clang++" CROSS_COMPILE=aarch64-linux-gnu- RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=${{ env.CLANG_BIN_DIR }}/ld.lld HOSTLD=${{ env.CLANG_BIN_DIR }}/ld.lld CLANG_AUTOFDO_PROFILE="../android/gki/aarch64/afdo/kernel.afdo" gki_defconfig
+          make ARCH=arm64 SUBARCH=arm64 -j$(nproc --all) O=out LLVM=1 LLVM_IAS=1 CC="ccache ${{ env.CLANG_BIN_DIR }}/clang" CXX="ccache ${{ env.CLANG_BIN_DIR }}/clang++" HOSTCC="ccache ${{ env.CLANG_BIN_DIR }}/clang" HOSTCXX="ccache ${{ env.CLANG_BIN_DIR }}/clang++" CROSS_COMPILE=aarch64-linux-gnu- RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=${{ env.CLANG_BIN_DIR }}/ld.lld HOSTLD=${{ env.CLANG_BIN_DIR }}/ld.lld CLANG_AUTOFDO_PROFILE="../android/gki/aarch64/afdo/kernel.afdo"
+
+      - name: 📊 Check ccache statistics (检查ccache统计信息)
+        run: |
+          ccache -s
+         
+      - name: 📦 Make AnyKernel3 (创建AnyKernel3)
+        # MODIFIED: Change to WORK_DIR to ensure AnyKernel3 is created at the root of our new workspace
+        working-directory: ${{ env.WORK_DIR }}
+        run: |
+         git clone https://github.com/Kernel-SU/AnyKernel3.git --depth=1      
+         rm -rf ./AnyKernel3/.git
+         rm -rf ./AnyKernel3/push.sh
+         # MODIFIED: Correctly copy the Image file from its build location inside WORK_DIR
+         cp kernel_workspace/kernel_platform/common/out/arch/arm64/boot/Image ./AnyKernel3/
+
+      - name: 📤 Upload AnyKernel3 (上传 AnyKernel3)
         uses: actions/upload-artifact@v4
         with:
-          name: SukiSU-Kernel-${{ env.DEVICES_NAME }}
-          path: /mnt/*.zip
-      # --- END: ADDED AND CORRECTED STEPS ---
+         name: AnyKernel3_${{ env.KSUVER }}_${{ env.DEVICES_NAME }}_SuKiSU
+         # MODIFIED: The upload path is now the absolute path to AnyKernel3 inside WORK_DIR
+         path: ${{ env.WORK_DIR }}/AnyKernel3/*
+         
+      - name: 📊 Post-build disk check (构建后空间检查)
+        run: |
+          echo "构建后磁盘空间："
+          df -h
