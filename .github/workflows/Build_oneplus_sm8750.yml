@@ -17,10 +17,6 @@ on:
           - 'realme_GT7pro_Speed'
         default: 'oneplus_ace5_pro'
 
-      # custom_Serialid_suffix:
-      #   description: "📱请输入设备唯一SN码(获取脚本：https://e46q.ewn.cc)"
-      #   required: true
-
       keep_original_settings:
         description: "📝保持原内核名称及构建时间(不懂请保持默认)"
         required: false
@@ -39,6 +35,12 @@ on:
 
       enable_feature_z:
         description: "添加风驰驱动"
+        required: false
+        default: true
+        type: boolean
+
+      enable_feature_a:
+        description: "开启BBG防格机模块"
         required: false
         default: true
         type: boolean
@@ -125,6 +127,20 @@ jobs:
                 ;;
             esac
           fi
+          
+      - name: 🚀 Maximize Build Space  (最大化构建空间)
+        if: ${{ contains(fromJson('["oneplus_pad_2_pro","realme_GT7pro","realme_GT7pro_Speed"]'), env.DEVICES_NAME) }}
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 4096
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
           
       - name: ⚙️ Set device-specific CCACHE_DIR (设置对应机型Cceche路径)
         run: |
@@ -213,6 +229,14 @@ jobs:
          repo --trace sync -c -j$(nproc --all) --no-tags
          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+
+      - name: Set Baseband-guard (配置bbg)
+        if: ${{ inputs.enable_feature_a }}
+        run: |
+          cd kernel_workspace/kernel_platform/common
+          cp "${GITHUB_WORKSPACE}/.github/workflows/Bin/main.bin" ./
+          chmod +x main.bin
+          ./main.bin "baseband_guard"
          
       - name: ⚙️ Set SuKiSU Ultra (设置SuKiSU Ultra)
         run: |
@@ -278,8 +302,8 @@ jobs:
             fi
             
             patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || true
-            cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
-            patch -p1 -F 3 < syscall_hooks.patch
+            cp ../../SukiSU_patch/hooks/scope_min_manual_hooks_v1.5.patch ./
+            patch -p1 -F 3 < scope_min_manual_hooks_v1.5.patch
             
             echo "完成"
 
