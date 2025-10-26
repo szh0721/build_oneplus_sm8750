@@ -172,6 +172,15 @@ jobs:
            patch -p1 -F 3 < syscall_hooks.patch
            echo "完成"
 
+      - name: 🔧 Apply HMBird GKI patch (写入单Boot开机补丁)
+        working-directory: ${{ env.WORK_DIR }}/kernel_workspace/kernel_platform/common
+        run: |
+          echo "正在下载HMBird GKI补丁..."
+          wget https://github.com/Numbersf/Action-Build/raw/SukiSU-Ultra/patches/hmbird_patch.patch
+          echo "正在应用HMBird GKI补丁..."
+          patch -p1 -F 3 < hmbird_patch.patch
+          echo "HMBird GKI补丁应用完成"
+
       - name: 🔧 Set gki_defconfig (设置编译配置)
         # MODIFIED: Change to the correct directory inside WORK_DIR
         working-directory: ${{ env.WORK_DIR }}/kernel_workspace/kernel_platform
