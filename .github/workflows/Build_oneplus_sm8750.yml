@@ -193,12 +193,7 @@ jobs:
           cd common
           git add -A && git commit -a -m "BUILD Kernel"
 
-      - name: 🔧 Set Kernel name (设置内核名称)
-        run: |
-         cd kernel_workspace/kernel_platform
-         sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
-         sudo sed -i 's/-4k/-android15-8-g174d20254551-abogki436492307-4k/g' ./common/arch/arm64/configs/gki_defconfig  
-
+      
       - name: 🔨 Build Kernel (构建内核)
         run: |
           # 使用内核源码仓库自带的clang编译器
