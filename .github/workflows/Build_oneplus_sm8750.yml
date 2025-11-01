@@ -98,7 +98,7 @@ jobs:
       - name: 📥 Initialize repo and sync (初始化repo并同步内核源码)
         run: |
          mkdir kernel_workspace && cd kernel_workspace
-         repo init -u https://github.com/HanKuCha/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${REPO_MANIFEST}.xml --depth=1
+         repo init -u https://github.com/szh0721/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m ${REPO_MANIFEST}.xml --depth=1
          repo --trace sync -c -j$(nproc --all) --no-tags
          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
@@ -152,14 +152,7 @@ jobs:
            patch -p1 -F 3 < syscall_hooks.patch
            echo "完成"
 
-      - name: 🔧 Apply HMBird GKI patch (写入单Boot开机补丁)
-        run: |
-          cd kernel_workspace/kernel_platform/common
-          echo "正在下载HMBird GKI补丁..."
-          wget https://github.com/Numbersf/Action-Build/raw/SukiSU-Ultra/patches/hmbird_patch.patch
-          echo "正在应用HMBird GKI补丁..."
-          patch -p1 -F 3 < hmbird_patch.patch
-          echo "HMBird GKI补丁应用完成"
+      
 
       - name: 🔧 Set gki_defconfig (设置编译配置)
         run: |
